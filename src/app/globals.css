@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-[#F9FAFB] text-[#111827] dark:bg-[#121212] dark:text-[#E5E7EB] antialiased selection:bg-[#111827] selection:text-[#F9FAFB] dark:selection:bg-[#E5E7EB] dark:selection:text-[#121212];
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
