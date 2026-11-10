@@ -9,7 +9,15 @@ export interface JobOffer {
   duration: string;
   remuneration?: string;
   url: string;
-  source: "Welcome to the Jungle" | "HelloWork" | "LinkedIn" | "JobTeaser" | "ADEO Careers" | "Browserbase Live";
+  source:
+    | "Welcome to the Jungle"
+    | "HelloWork"
+    | "LinkedIn"
+    | "LinkedIn Jobs (Live)"
+    | "JobTeaser"
+    | "ADEO Careers"
+    | "Browserbase Live"
+    | string;
   contactEmail: string;
   requiredSkills: string[];
   missions: string[];

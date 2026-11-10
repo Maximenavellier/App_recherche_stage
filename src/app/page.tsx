@@ -45,32 +45,6 @@ import {
   matchAndRankOffers,
 } from "@/lib/offers-data";
 
-async function extractTextFromPdfOrTextFile(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-
-  if (file.name.toLowerCase().endsWith(".txt") || file.type === "text/plain") {
-    return new TextDecoder("utf-8").decode(bytes);
-  }
-
-  // Lightweight client-side PDF text extractor (reads literal strings and UTF-8/Latin1 tokens from PDF streams)
-  const rawLatin1 = new TextDecoder("latin1").decode(bytes);
-  const extractedChunks: string[] = [];
-
-  // Extract parenthesized PDF text strings (...)
-  const parenRegex = /\(([^()\\]{2,200})\)/g;
-  let match: RegExpExecArray | null;
-  while ((match = parenRegex.exec(rawLatin1)) !== null) {
-    const clean = match[1].replace(/[^\x20-\x7EÀ-ÿ]/g, " ").trim();
-    if (clean.length > 2) extractedChunks.push(clean);
-  }
-
-  // Also scan readable ASCII/Latin words for technical stack detection
-  const readableWords = rawLatin1.match(/[A-Za-zÀ-ÿ0-9+#._-]{3,40}/g) || [];
-  const combined = `${extractedChunks.join(" ")} ${readableWords.join(" ")}`;
-  return combined.slice(0, 35000);
-}
-
 export default function StagePilotDashboard() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [activeTab, setActiveTab] = useState<"offers" | "crm" | "cron">("offers");
@@ -78,16 +52,18 @@ export default function StagePilotDashboard() {
   // Profile & Scraping state
   const [profile, setProfile] = useState<CandidateProfile>(DEFAULT_CANDIDATE_PROFILE);
   const [keywordInput, setKeywordInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("Data Analyst");
+  const [rawScrapedOffers, setRawScrapedOffers] = useState<JobOffer[]>(VERIFIED_JOB_OFFERS);
   const [offers, setOffers] = useState<JobOffer[]>(() =>
-    matchAndRankOffers(VERIFIED_JOB_OFFERS, DEFAULT_CANDIDATE_PROFILE.keywords)
+    matchAndRankOffers(VERIFIED_JOB_OFFERS, DEFAULT_CANDIDATE_PROFILE.keywords, "Data Analyst")
   );
   const [isScraping, setIsScraping] = useState(false);
-  const [lastScrapedAt, setLastScrapedAt] = useState<string>("10/11/2026 22:15");
+  const [lastScrapedAt, setLastScrapedAt] = useState<string>("En direct");
   const [cvUploadStatus, setCvUploadStatus] = useState<string>(
-    "Profil actif : CV_Maxime_Navellier_FullStack_IA.pdf (15 compétences détectées)"
+    "Aucun CV importé — Cliquez ici pour importer votre CV (.pdf) et adapter les offres"
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const hasInitialScraped = useRef<boolean>(false);
 
   // One-Click Application state
   const [oneClickDirectMode, setOneClickDirectMode] = useState<boolean>(false);
@@ -145,37 +121,66 @@ export default function StagePilotDashboard() {
       .catch(() => {});
   }, []);
 
-  // Re-rank offers whenever keywords or searchQuery change
+  // Re-rank the currently scraped live offers whenever keywords change
   useEffect(() => {
-    setOffers(matchAndRankOffers(VERIFIED_JOB_OFFERS, profile.keywords, searchQuery));
-  }, [profile.keywords, searchQuery]);
+    setOffers(matchAndRankOffers(rawScrapedOffers, profile.keywords, searchQuery));
+  }, [rawScrapedOffers, profile.keywords]);
+
+  // Automatically trigger live scraping on initial load and when searchQuery changes (debounced)
+  useEffect(() => {
+    if (!hasInitialScraped.current) {
+      hasInitialScraped.current = true;
+      triggerScraping(profile.keywords, profile.cvRawText, searchQuery, true);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (searchQuery.trim().length >= 2) {
+        triggerScraping(profile.keywords, profile.cvRawText, searchQuery, true);
+      }
+    }, 650);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleCvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setCvUploadStatus(`Analyse du fichier ${file.name} en cours...`);
+    setCvUploadStatus(`Extraction du texte PDF de ${file.name} en cours...`);
+    setIsScraping(true);
     try {
-      const rawText = await extractTextFromPdfOrTextFile(file);
-      const detected = extractKeywordsFromText(rawText);
-      const merged = Array.from(
-        new Set([...detected, ...profile.keywords])
-      );
+      const formData = new FormData();
+      formData.append("file", file);
 
-      const updatedProfile: CandidateProfile = {
-        ...profile,
-        cvFileName: file.name,
-        cvRawText: rawText.slice(0, 6000) || profile.cvRawText,
-        keywords: merged.length > 0 ? merged : profile.keywords,
-      };
-      setProfile(updatedProfile);
+      const parseRes = await fetch("/api/parse-cv", {
+        method: "POST",
+        body: formData,
+      });
+      const parsedData = await parseRes.json();
+
+      if (!parseRes.ok || !parsedData.profile) {
+        throw new Error(parsedData.error || "Impossible de lire ce fichier PDF");
+      }
+
+      const newProfile: CandidateProfile = parsedData.profile;
+      const nextQuery: string = parsedData.suggestedQuery || "Data Analyst";
+
+      setProfile(newProfile);
+      setSearchQuery(nextQuery);
       setCvUploadStatus(
-        `CV importé : ${file.name} (${detected.length > 0 ? `${detected.length} compétences extraites du PDF` : "profil mis à jour"})`
+        `CV actif : ${file.name} → Profil détecté : ${nextQuery} (${newProfile.keywords.length} compétences extraites)`
       );
 
-      await triggerScraping(updatedProfile.keywords, updatedProfile.cvRawText, searchQuery);
-    } catch {
-      setCvUploadStatus(`Erreur de lecture sur ${file.name}. Veuillez vérifier le fichier.`);
+      await triggerScraping(
+        newProfile.keywords,
+        newProfile.cvRawText,
+        nextQuery,
+        false
+      );
+    } catch (err) {
+      setCvUploadStatus(`Erreur de lecture sur ${file.name} : ${String(err)}`);
+      setIsScraping(false);
     }
   };
 
@@ -200,7 +205,8 @@ export default function StagePilotDashboard() {
   const triggerScraping = async (
     customKeywords = profile.keywords,
     customCvText = profile.cvRawText,
-    customQuery = searchQuery
+    customQuery = searchQuery,
+    silent = false
   ) => {
     setIsScraping(true);
     try {
@@ -214,7 +220,8 @@ export default function StagePilotDashboard() {
         }),
       });
       const data = await res.json();
-      if (Array.isArray(data.offers)) {
+      if (Array.isArray(data.offers) && data.offers.length > 0) {
+        setRawScrapedOffers(data.offers);
         setOffers(data.offers);
       }
       setLastScrapedAt(
@@ -224,13 +231,17 @@ export default function StagePilotDashboard() {
           second: "2-digit",
         })
       );
-      setNotification({
-        type: "info",
-        title: "Scan Browserbase & Matching terminé",
-        detail: `${data.offers?.length || offers.length} offres vérifiées et classées selon votre profil (${customKeywords.length} compétences actives).`,
-      });
+      if (!silent) {
+        setNotification({
+          type: "info",
+          title: `Scraping en direct terminé : « Stage ${data.effectiveQuery || customQuery} »`,
+          detail: `${data.offers?.length || 0} offres réelles extraites en temps réel et classées selon vos ${customKeywords.length} compétences.`,
+        });
+      }
     } catch {
-      setOffers(matchAndRankOffers(VERIFIED_JOB_OFFERS, customKeywords, customQuery));
+      const fallback = matchAndRankOffers(VERIFIED_JOB_OFFERS, customKeywords, customQuery);
+      setRawScrapedOffers(fallback);
+      setOffers(fallback);
     } finally {
       setIsScraping(false);
     }
@@ -661,14 +672,45 @@ export default function StagePilotDashboard() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium uppercase tracking-wider text-[#4B5563] dark:text-[#9CA3AF] mb-1.5">
-                        Ajouter une compétence / mot-clé
+                        Rechercher un poste / métier en direct
+                      </label>
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          triggerScraping(profile.keywords, profile.cvRawText, searchQuery, false);
+                        }}
+                        className="flex gap-2"
+                      >
+                        <div className="relative flex-1">
+                          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#4B5563] dark:text-[#9CA3AF]" />
+                          <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Ex: Data Analyst, Data Scientist, Full Stack..."
+                            className="w-full pl-8 pr-3 py-1.5 text-xs rounded border border-[#E5E7EB] dark:border-[#2E2E2E] bg-[#F9FAFB] dark:bg-[#121212] text-[#111827] dark:text-[#E5E7EB] focus:outline-none focus:border-[#111827] dark:focus:border-[#E5E7EB]"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={isScraping}
+                          className="px-3 py-1.5 text-xs font-medium rounded border border-[#111827] dark:border-[#E5E7EB] bg-[#111827] text-[#F9FAFB] dark:bg-[#E5E7EB] dark:text-[#121212] hover:opacity-90 disabled:opacity-50"
+                        >
+                          Chercher
+                        </button>
+                      </form>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium uppercase tracking-wider text-[#4B5563] dark:text-[#9CA3AF] mb-1.5">
+                        Ajouter une compétence à votre profil
                       </label>
                       <form onSubmit={addKeyword} className="flex gap-2">
                         <input
                           type="text"
                           value={keywordInput}
                           onChange={(e) => setKeywordInput(e.target.value)}
-                          placeholder="Ex: FastAPI, Kubernetes, Lille..."
+                          placeholder="Ex: Power BI, SQL, Tableau, Python..."
                           className="flex-1 px-3 py-1.5 text-xs rounded border border-[#E5E7EB] dark:border-[#2E2E2E] bg-[#F9FAFB] dark:bg-[#121212] text-[#111827] dark:text-[#E5E7EB] focus:outline-none focus:border-[#111827] dark:focus:border-[#E5E7EB]"
                         />
                         <button
@@ -680,29 +722,45 @@ export default function StagePilotDashboard() {
                         </button>
                       </form>
                     </div>
+                  </div>
 
-                    <div>
-                      <label className="block text-xs font-medium uppercase tracking-wider text-[#4B5563] dark:text-[#9CA3AF] mb-1.5">
-                        Filtrer par ville, entreprise ou techno
-                      </label>
-                      <div className="relative">
-                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#4B5563] dark:text-[#9CA3AF]" />
-                        <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          placeholder="Ex: Lille, ADEO, Paris, Full Stack, IA..."
-                          className="w-full pl-8 pr-3 py-1.5 text-xs rounded border border-[#E5E7EB] dark:border-[#2E2E2E] bg-[#F9FAFB] dark:bg-[#121212] text-[#111827] dark:text-[#E5E7EB] focus:outline-none focus:border-[#111827] dark:focus:border-[#E5E7EB]"
-                        />
-                      </div>
-                    </div>
+                  {/* Quick Domain Presets */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] font-mono uppercase text-[#4B5563] dark:text-[#9CA3AF] mr-1">
+                      Domaines rapides :
+                    </span>
+                    {[
+                      "Data Analyst",
+                      "Data Scientist",
+                      "Data Engineer",
+                      "Business Analyst",
+                      "Développeur Full Stack",
+                      "Ingénieur IA",
+                      "Cybersécurité",
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          setSearchQuery(preset);
+                          triggerScraping(profile.keywords, profile.cvRawText, preset, false);
+                        }}
+                        className={`px-2.5 py-1 text-[11px] font-mono rounded border transition-colors ${
+                          searchQuery.toLowerCase() === preset.toLowerCase()
+                            ? "border-[#111827] bg-[#111827] text-[#F9FAFB] dark:border-[#E5E7EB] dark:bg-[#E5E7EB] dark:text-[#121212]"
+                            : "border-[#E5E7EB] bg-[#F9FAFB] text-[#4B5563] hover:text-[#111827] dark:border-[#2E2E2E] dark:bg-[#121212] dark:text-[#9CA3AF] dark:hover:text-[#E5E7EB]"
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
                   </div>
 
                   {/* Active Keyword Pills */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-[11px] font-mono uppercase text-[#4B5563] dark:text-[#9CA3AF]">
-                        Mots-clés actifs pour le matching ({profile.keywords.length})
+                        Mots-clés actifs de votre profil ({profile.keywords.length})
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
