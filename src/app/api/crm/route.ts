@@ -26,20 +26,36 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, status, responseDate }: { id: string; status: ApplicationStatus; responseDate?: string } = body;
+    const {
+      id,
+      status,
+      responseDate,
+      repliedToPositive,
+    }: {
+      id: string;
+      status?: ApplicationStatus;
+      responseDate?: string;
+      repliedToPositive?: boolean;
+    } = body;
 
     const current = getCachedCrmEntries();
-    const updated = current.map((entry) =>
-      entry.id === id
-        ? {
-            ...entry,
-            status,
-            responseDate:
-              responseDate ||
-              (status !== "Envoyé" ? new Date().toISOString().slice(0, 10) : entry.responseDate),
-          }
-        : entry
-    );
+    const updated = current.map((entry) => {
+      if (entry.id !== id) return entry;
+      const nextStatus = status ?? entry.status;
+      return {
+        ...entry,
+        status: nextStatus,
+        responseDate:
+          responseDate ||
+          (status && status !== "Envoyé"
+            ? new Date().toISOString().slice(0, 10)
+            : entry.responseDate),
+        repliedToPositive:
+          typeof repliedToPositive === "boolean"
+            ? repliedToPositive
+            : entry.repliedToPositive,
+      };
+    });
 
     saveCachedCrmEntries(updated);
 
