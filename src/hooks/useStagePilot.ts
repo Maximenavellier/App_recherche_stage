@@ -281,9 +281,27 @@ export function useStagePilot() {
       }
       if (filters.durationFilter !== "ALL") {
         const m = offer.durationMonths || 6;
-        if (filters.durationFilter === "1-2" && m > 2) return false;
-        if (filters.durationFilter === "3-4" && (m < 3 || m > 4)) return false;
-        if (filters.durationFilter === "5-6" && m < 5) return false;
+        const minM = offer.minDurationMonths || (m <= 4 ? m : 3);
+        const maxM = offer.maxDurationMonths || m;
+        const durStr = (offer.duration || "").toLowerCase();
+
+        if (filters.durationFilter === "1-2") {
+          const is12 = minM <= 2 || /\b(1|2)\s*mois\b/i.test(durStr);
+          if (!is12) return false;
+        } else if (filters.durationFilter === "3-4") {
+          const is34 =
+            (minM <= 4 && maxM >= 3) ||
+            m === 3 ||
+            m === 4 ||
+            /\b(3|4)\s*mois\b/i.test(durStr) ||
+            /3\s*(?:à|a|-)\s*6\s*mois/i.test(durStr) ||
+            /4\s*(?:à|a|-)\s*6\s*mois/i.test(durStr) ||
+            /flexible|adaptable|césure|mi-parcours/i.test(durStr);
+          if (!is34) return false;
+        } else if (filters.durationFilter === "5-6") {
+          const is56 = maxM >= 5 || m >= 5 || /\b(5|6)\s*mois\b/i.test(durStr);
+          if (!is56) return false;
+        }
       }
       if (filters.studyLevelFilter !== "ALL") {
         const lvl = (offer.studyLevel || "").toUpperCase();

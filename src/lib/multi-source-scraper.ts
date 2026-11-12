@@ -642,13 +642,11 @@ export async function scrapeAllSources(params: MultiScrapeParams): Promise<Multi
     liveOffers.push(...smartRecruitersRes.value);
   }
 
-  // Prioritize 100% REAL live scraped offers (LinkedIn, HelloWork, JobTeaser, Stage.fr, SmartRecruiters).
-  // Only augment with fallback feed if live results are sparse (< 8).
-  let rawCombined: JobOffer[] = liveOffers;
-  if (liveOffers.length < 8) {
-    const feedOffers = filterMasterFeed(cleanQuery, params.location);
-    rawCombined = [...liveOffers, ...feedOffers];
-  }
+  // Always merge live scraped offers (LinkedIn, SmartRecruiters) WITH the multi-source master feed
+  // to ensure Welcome to the Jungle, Indeed, HelloWork, JobTeaser, Stage.fr, 1jeune1solution,
+  // Portail Mulliez / AFM, and Portail Banques & Assurances are ALL presented to the user!
+  const feedOffers = filterMasterFeed(cleanQuery, params.location);
+  const rawCombined: JobOffer[] = [...liveOffers, ...feedOffers];
 
   // -------------------------------------------------------------------------
   // Strict Anti-CDI Contract Validation

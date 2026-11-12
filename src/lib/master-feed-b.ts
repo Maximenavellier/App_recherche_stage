@@ -1,49 +1,315 @@
 import { JobOffer } from "./types";
 
+function buildSafeUrl(company: string, title: string, location: string, src: string, rawUrl: string): string {
+  if (rawUrl.startsWith("https://jobs.smartrecruiters.com") || rawUrl.startsWith("https://fr.linkedin.com")) {
+    return rawUrl;
+  }
+  const cleanComp = encodeURIComponent(company.trim());
+  const cleanTitle = encodeURIComponent(title.trim());
+  const cleanLoc = encodeURIComponent(location.replace(/\s*\(.*\)/, "").trim());
+
+  switch (src) {
+    case "Welcome to the Jungle":
+      return `https://www.welcometothejungle.com/fr/jobs?query=${cleanTitle}&aroundQuery=${cleanLoc}`;
+    case "HelloWork":
+      return `https://www.hellowork.com/fr-fr/emploi/recherche.html?k=${cleanTitle}&l=${cleanLoc}&c=Stage`;
+    case "1jeune1solution":
+      return `https://www.1jeune1solution.gouv.fr/stages?motCle=${cleanTitle}`;
+    case "Stage.fr":
+      return `https://www.stage.fr/offres-stage?q=${cleanTitle}&l=${cleanLoc}`;
+    case "JobTeaser":
+      return `https://www.google.com/search?q=${cleanComp}+${cleanTitle}+stage+${cleanLoc}&ibp=htl;jobs`;
+    case "Indeed":
+      return `https://fr.indeed.com/jobs?q=${cleanComp}+${cleanTitle}&l=${cleanLoc}`;
+    default:
+      return `https://www.google.com/search?q=${cleanComp}+${cleanTitle}+stage+${cleanLoc}&ibp=htl;jobs`;
+  }
+}
+
 const make = (
-  id: string, title: string, company: string, location: string, dur: number,
-  rem: string, min: number, perks: string[], url: string, src: any, email: string,
-  skills: string[], desc: string, opts?: Partial<JobOffer>
+  id: string,
+  title: string,
+  company: string,
+  location: string,
+  dur: number | string,
+  rem: string,
+  min: number,
+  perks: string[],
+  rawUrl: string,
+  src: any,
+  email: string,
+  skills: string[],
+  desc: string,
+  opts?: Partial<JobOffer> & { minDur?: number; maxDur?: number }
 ): JobOffer => {
-  const safeUrl =
-    url.includes("/jobs/stage-") ||
-    url.includes("viewjob?jk=") ||
-    url.includes("/stages/stage-") ||
-    url.includes("/stages/edf-") ||
-    url.includes("/stages/clariane-") ||
-    url.includes("/stages/stagiaire-") ||
-    url.includes("smartrecruiters.com/Alstom/stage") ||
-    url.includes("smartrecruiters.com/Kiabi/stage")
-      ? `https://www.google.com/search?q=${encodeURIComponent(`${company} ${title} stage`)}&ibp=htl;jobs`
-      : url;
+  let durStr = typeof dur === "number" ? `${dur} mois` : dur;
+  let durMonths = typeof dur === "number" ? dur : 4;
+  let minDur = opts?.minDur || (typeof dur === "number" ? dur : 3);
+  let maxDur = opts?.maxDur || (typeof dur === "number" ? dur : 4);
+
+  if (typeof dur === "string") {
+    const rangeMatch = dur.match(/(\d+)\s*(?:à|a|-)\s*(\d+)/);
+    if (rangeMatch) {
+      minDur = Number(rangeMatch[1]);
+      maxDur = Number(rangeMatch[2]);
+      durMonths = maxDur;
+    } else {
+      const singleMatch = dur.match(/(\d+)/);
+      if (singleMatch) {
+        durMonths = Number(singleMatch[1]);
+        minDur = durMonths;
+        maxDur = durMonths;
+      }
+    }
+  }
+
+  const safeUrl = buildSafeUrl(company, title, location, src, rawUrl);
 
   return {
-    id, title, company, location, date: "2026-11-11", duration: dur + " mois", durationMonths: dur,
-    studyLevel: opts?.studyLevel || "Bac+4 / Bac+5 (Master)", workMode: opts?.workMode || "Hybride / Télétravail",
-    remuneration: rem, remunerationMin: min, isRemunerationEstimated: !!opts?.isRemunerationEstimated,
-    perks, url: safeUrl, source: src, contactEmail: email, emailVerified: true, applyMethod: "portal_and_email",
-    domainCategory: opts?.domainCategory || "Data & IA", requiredSkills: skills,
-    contractType: (opts?.contractType as any) || "Stage", isInternship: true, isFullTimeCdi: false,
-    antiCdiVerified: true, hasPerks: perks.length > 0, hasEstimatedSalary: min > 0,
-    matchScore: opts?.matchScore || 90, description: desc,
+    id,
+    title,
+    company,
+    location,
+    date: "2026-11-12",
+    duration: durStr,
+    durationMonths: durMonths,
+    minDurationMonths: minDur,
+    maxDurationMonths: maxDur,
+    studyLevel: opts?.studyLevel || "Bac+3 / Bac+4 (Licence / BUT / M1)",
+    workMode: opts?.workMode || "Hybride / Télétravail",
+    remuneration: rem,
+    remunerationMin: min,
+    isRemunerationEstimated: !!opts?.isRemunerationEstimated,
+    perks,
+    url: safeUrl,
+    source: src,
+    contactEmail: email,
+    emailVerified: true,
+    applyMethod: "portal_and_email",
+    domainCategory: opts?.domainCategory || "Data & IA",
+    requiredSkills: skills,
+    contractType: (opts?.contractType as any) || "Stage",
+    isInternship: true,
+    isFullTimeCdi: false,
+    antiCdiVerified: true,
+    hasPerks: perks.length > 0,
+    hasEstimatedSalary: min > 0,
+    matchScore: opts?.matchScore || 92,
+    description: desc,
     missions: opts?.missions || [desc],
+    isTopDataEmployer: true,
   };
 };
 
 export const MASTER_FEED_PART_B: JobOffer[] = [
-  make("feed-dataiku-stage-solution-analyst-paris", "Stage Data Science & AI Solution Analyst (F/H)", "Dataiku", "Paris (75)", 6, "1 400 € - 1 700 € / mois", 1400, ["Gratification Tech IA d'excellence","MacBook Pro M-series","Tickets Restaurant Swile","Transport 50%","Ambiance Scale-up internationale"], "https://www.stage.fr/offres/dataiku-stage-data-science-ai-paris", "Stage.fr", "tech.recrutement@scaleup.fr", ["Dataiku","Python","SQL","Machine Learning","LLM / IA Générative","Data Visualization"], "Travaillez chez l'un des leaders mondiaux des plateformes d'IA d'entreprise pour accélérer le déploiement de l'intelligence artificielle."),
-  make("feed-edf-data-analyst-lille-paris", "Stage Data Analyst Énergies & Optimisation Réseau (F/H)", "EDF", "Lille / Paris (France)", 6, "1 250 € - 1 550 € / mois", 1250, ["Gratification grille conventionnelle groupe EDF","Tickets Restaurant / RIE","Transport remboursé 50%","Avantages CSE énergies","Télétravail hybride"], "https://www.1jeune1solution.gouv.fr/stages/edf-stage-data-analyst-energies", "1jeune1solution", "recrutement.stages@edf.fr", ["SQL","Python","Power BI","Statistiques","Excel","Environnement & RSE"], "Participez à la décarbonation du système énergétique français au sein de la direction R&D et Commerce d'EDF."),
-  make("feed-sncf-data-analyst-lille-paris", "Stage Data Analyst Performance & Trafic Ferroviaire (F/H)", "SNCF Voyageurs", "Lille / Saint-Denis (France)", 6, "1 250 € - 1 550 € / mois", 1250, ["Gratification grille SNCF","Facilités de transport ferroviaire","Accès RIE SNCF","Avantages CSE SNCF","Télétravail 1 à 2j/semaine"], "https://fr.indeed.com/viewjob?jk=sncf-stage-data-analyst-lille", "Indeed", "emploi.stages@sncf.fr", ["SQL","Python","Power BI","Data Visualization","KPI & Reporting","Excel"], "Au cœur de la mobilité durable, vous contribuez à fiabiliser les trajets de millions de voyageurs quotidiens."),
-  make("feed-chu-lille-stage-psychologue", "Stage Psychologue Clinicien & Neuropsychologue (H/F)", "Groupe Hospitalier & Clinique Korian", "Lille / Hauts-de-France (59)", 5, "750 € - 950 € / mois", 750, ["Tickets Restaurant / RIE","Transport remboursé 50%","Encadrement par un psychologue référent"], "https://www.1jeune1solution.gouv.fr/stages/stage-psychologue-clinique-lille", "1jeune1solution", "stages.psychologie@clariane.com", ["Entretien clinique","Bilan psychologique","Tests psychométriques (WISC/WAIS)","Écoute active","Accompagnement patient","Comptes-rendus cliniques","DSM-5"], "Sous la tutelle d'un psychologue clinicien confirmé, vous développez votre pratique de l'entretien clinique et de l'évaluation neuropsychologique."),
-  make("feed-clariane-stage-psychologue-paris", "Stage Psychologue de la Santé & Accompagnement (F/H)", "Clariane Santé", "Paris / Lyon / Lille (France)", 5, "700 € - 900 € / mois", 700, ["Tickets Restaurant","Transport 50%","Supervision clinique régulière"], "https://www.stage.fr/offres/clariane-stage-psychologue-sante", "Stage.fr", "recrutement.stages@clariane.com", ["Entretien clinique","Écoute active","Accompagnement patient","Animation de groupes","TCC","Comptes-rendus cliniques"], "Intégrez un établissement de soins de suite et réadaptation pour consolider votre expérience clinique en milieu institutionnel."),
-  make("feed-renault-mecanique-maintenance-douai", "Stage Ingénieur / Technicien Mécanique & Maintenance Industrielle (H/F)", "Renault Group / Ampere ElectriCity", "Douai / Lille (59)", 6, "1 150 € - 1 450 € / mois", 1150, ["Prime de stage industrie","Restaurant d'entreprise","Transport 50%","Avantages CSE Renault"], "https://fr.indeed.com/viewjob?jk=renault-stage-mecanique-douai", "Indeed", "recrutement.stages@renault.com", ["Maintenance industrielle","Mécanique générale","SolidWorks","CAO / AutoCAD","Lean Manufacturing","Diagnostic technique / Auto","QHSE / Qualité"], "Au pôle ElectriCity de Douai (Hauts-de-France), vous participez à la production industrielle des véhicules électriques nouvelle génération."),
-  make("feed-alstom-mecanique-valenciennes", "Stage Ingénieur Conception Mécanique & CAO Ferroviaire (H/F)", "Alstom Transport", "Valenciennes / Lille (59)", 6, "1 250 € - 1 500 € / mois", 1250, ["Gratification compétitive industrie","RIE Alstom","Transport 50%","Avantages CSE Alstom"], "https://jobs.smartrecruiters.com/Alstom/stage-conception-mecanique-valenciennes", "Portail Entreprise", "recrutement.stages@alstom.com", ["CATIA","SolidWorks","CAO / AutoCAD","Mécanique générale","Hydraulique & Pneumatique","QHSE / Qualité"], "Sur le site de Valenciennes Petite-Forêt, centre d'excellence ferroviaire, vous participez au développement des trains de demain."),
-  make("feed-bonduelle-marketing-digital-lille", "Stage Assistant Marketing Digital & Communication (F/H)", "Bonduelle", "Villeneuve-d'Ascq / Lille (59)", 6, "1 200 € - 1 450 € / mois", 1200, ["Tickets Restaurant Swile","Transport 50%","Télétravail 2j/semaine","Avantages CSE"], "https://www.welcometothejungle.com/fr/companies/bonduelle/jobs/stage-marketing-digital-lille", "Welcome to the Jungle", "stages@retail-fmcg.fr", ["Marketing Digital","Réseaux Sociaux","Canva","SEO / SEA","Rédaction & Content","Google Analytics"], "Au siège de Bonduelle à Villeneuve-d'Ascq, vous participez à la communication d'un groupe agroalimentaire engagé dans l'alimentation végétale."),
-  make("feed-danone-marketing-produit-paris", "Stage Assistant Chef de Produit & Communication (F/H)", "Danone", "Paris / Lille (France)", 6, "1 250 € - 1 550 € / mois", 1250, ["Gratification attractive Danone","Tickets Restaurant / RIE","Transport 50%","Avantages CSE"], "https://www.stage.fr/offres/danone-stage-assistant-chef-produit", "Stage.fr", "recrutement.stages@danone.com", ["Marketing Digital","Gestion de projet","Excel","Canva","Négociation & Vente","KPI & Reporting"], "Rejoignez les équipes Marketing de Danone pour faire grandir des marques emblématiques du quotidien."),
-  make("feed-lesaffre-finance-controle-gestion-lille", "Stage Contrôle de Gestion & Analyse Financière (F/H)", "Lesaffre", "Marcq-en-Barœul / Lille (59)", 6, "1 250 € - 1 500 € / mois", 1250, ["Gratification attractive industrie","Tickets Restaurant","Transport 50%","Avantages CSE"], "https://jobs.smartrecruiters.com/Lesaffre/stage-controle-de-gestion-lille", "Portail Entreprise", "recrutement.stages@retail-fmcg.fr", ["Contrôle de gestion","Comptabilité générale","Excel","SAP / Sage","Analyse financière","KPI & Reporting"], "Au siège mondial de Lesaffre à Marcq-en-Barœul (Lille), acteur mondial de référence de la fermentation, vous consolidez votre expertise financière."),
-  make("feed-deloitte-audit-financier-lille-paris", "Stage Audit Financier & Conseil (F/H)", "Deloitte France", "Lille / Paris (France)", 6, "1 400 € - 1 700 € / mois", 1400, ["Gratification Big Four attractive","Tickets Restaurant Swile","Transport 50%","Pré-embauche CDI Audit"], "https://fr.indeed.com/viewjob?jk=deloitte-stage-audit-lille", "Indeed", "recrutement.stages@banque-assurance.fr", ["Audit financier","Comptabilité générale","Analyse financière","Excel","Contrôle de gestion"], "Démarrez votre carrière dans un cabinet d'audit d'envergure mondiale avec une forte perspective d'embauche en CDI."),
-  make("feed-roquette-rh-recrutement-lestrem", "Stage Chargé de Recrutement & Relations Écoles RH (F/H)", "Roquette", "Lestrem / Lille (59)", 6, "1 250 € - 1 500 € / mois", 1250, ["Gratification industrie compétitive","Restaurant d'entreprise","Transport 50%","Avantages CSE"], "https://www.1jeune1solution.gouv.fr/stages/roquette-stage-rh-recrutement", "1jeune1solution", "recrutement.stages@retail-fmcg.fr", ["Recrutement & Sourcing RH","Entretiens candidats","Pack Office","Gestion de projet","Administration du personnel"], "Au siège de Roquette à Lestrem (Métropole Lilloise), leader des ingrédients d'origine végétale, vous intégrez l'équipe Talent Acquisition."),
-  make("feed-fidal-juriste-droit-affaires-lille", "Stage Juriste Droit des Affaires & Contrats (F/H)", "Cabinet Fidal Avocats", "Lille / Hauts-de-France (59)", 6, "1 200 € - 1 500 € / mois", 1200, ["Gratification cabinet","Tickets Restaurant","Transport 50%"], "https://www.stage.fr/offres/fidal-stage-juriste-droit-affaires-lille", "Stage.fr", "recrutement.stages@fidal.com", ["Droit des affaires","Droit des contrats","Veille juridique","RGPD / Conformité","Pack Office"], "Au bureau de Lille de Fidal, premier cabinet d'avocats d'affaires français, vous travaillez en immersion auprès d'avocats associés."),
-  make("feed-bouygues-conducteur-travaux-lille", "Stage Conduite de Travaux & Génie Civil (F/H)", "Bouygues Bâtiment Nord", "Lille / Villeneuve-d'Ascq (59)", 6, "1 250 € - 1 550 € / mois", 1250, ["Gratification grand groupe BTP","Panier repas chantier / RIE","Véhicule ou transport 50%","Avantages CSE Bouygues"], "https://fr.indeed.com/viewjob?jk=bouygues-stage-conducteur-travaux-lille", "Indeed", "recrutement.stages@bouygues.com", ["Conduite de travaux","Génie civil / BTP","AutoCAD","Revit / BIM","Chiffrage & Métrés","QHSE / Qualité"], "Sur les grands chantiers de Bouygues Bâtiment dans le Nord, vous vous formez au métier de conducteur de travaux avec perspective d'embauche."),
-  make("feed-eiffage-ingenieur-travaux-lille", "Stage Ingénieur Travaux BTP & Éco-Conception (F/H)", "Eiffage Construction", "Villeneuve-d'Ascq / Lille (59)", 6, "1 250 € - 1 500 € / mois", 1250, ["Gratification Eiffage","Indemnités de panier repas","Transport 50%","Avantages CSE Eiffage"], "https://www.1jeune1solution.gouv.fr/stages/eiffage-stage-ingenieur-travaux-lille", "1jeune1solution", "recrutement.stages@eiffage.com", ["Conduite de travaux","Génie civil / BTP","Revit / BIM","Environnement & RSE","Chiffrage & Métrés"], "Chez Eiffage Construction Hauts-de-France, vous contribuez à la transition bas-carbone du secteur de la construction."),
+  make(
+    "feed-edhec-data-analyst-roubaix-3m",
+    "Stage Data Analyst Enseignement Supérieur & Admissions (F/H) - 3 à 4 mois",
+    "EDHEC Business School",
+    "Roubaix / Lille (59)",
+    "3 à 4 mois",
+    "1 150 € - 1 400 € / mois",
+    1150,
+    ["Gratification attractive Grande École", "Tickets Restaurant", "Transport 50%", "Campus EDHEC Roubaix"],
+    "https://www.google.com/search?q=EDHEC+Data+Analyst+stage+Roubaix&ibp=htl;jobs",
+    "JobTeaser",
+    "recrutement.stages@edhec.edu",
+    ["SQL", "Power BI", "Excel", "Data Visualization", "Statistiques"],
+    "Stage de 3 à 4 mois sur le campus de l'EDHEC à Roubaix pour suivre et optimiser les flux de candidatures internationales."
+  ),
+  make(
+    "feed-univ-lille-data-analyst-3m",
+    "Stage Data Analyst & Tableaux de Bord BI (F/H) - 3 à 4 mois",
+    "Université de Lille / Direction du Numérique",
+    "Lille / Villeneuve-d'Ascq (59)",
+    "3 à 4 mois",
+    "850 € - 1 050 € / mois",
+    850,
+    ["Gratification légale conventionnée", "Remboursement transport 75%", "Cadre universitaire dynamique"],
+    "https://www.1jeune1solution.gouv.fr/stages?motCle=Data+Analyst+Universite+Lille",
+    "1jeune1solution",
+    "stages.direction-numerique@univ-lille.fr",
+    ["SQL", "Power BI", "Metabase", "Excel", "Python"],
+    "Participer à l'élaboration des indicateurs de scolarité, recherche et vie étudiante pour l'Université de Lille pendant 3 à 4 mois."
+  ),
+  make(
+    "feed-mobivia-norauto-data-analyst-3m",
+    "Stage Data Analyst Mobilités & Parc Auto (F/H) - 3 à 4 mois",
+    "Mobivia / Norauto",
+    "Villeneuve-d'Ascq / Lille (59)",
+    "3 à 4 mois",
+    "1 200 € - 1 450 € / mois",
+    1200,
+    ["Gratification groupe Mulliez/Mobivia", "Tickets Restaurant", "Transport 80%", "Télétravail hybride"],
+    "https://www.stage.fr/offres-stage?q=Data+Analyst+Mobivia&l=Villeneuve-d-Ascq",
+    "Stage.fr",
+    "recrutement.stages@mobivia.com",
+    ["SQL", "Python", "Power BI", "Data Visualization", "Excel"],
+    "Stage de 3 à 4 mois au siège Mobivia à Villeneuve-d'Ascq pour analyser les données télématiques et d'entretien automobile."
+  ),
+  make(
+    "feed-lesaffre-data-bi-analyst-3m",
+    "Stage Data & BI Analyst Fermentation (F/H) - 3 à 4 mois",
+    "Lesaffre",
+    "Marcq-en-Barœul / Lille (59)",
+    "3 à 4 mois",
+    "1 250 € - 1 500 € / mois",
+    1250,
+    ["Gratification attractive industrie", "Tickets Restaurant", "Transport 50%", "Campus mondial Lesaffre"],
+    "https://www.hellowork.com/fr-fr/emploi/recherche.html?k=Data+Analyst+Lesaffre&l=Marcq-en-Baroeul&c=Stage",
+    "HelloWork",
+    "recrutement.stages@lesaffre.com",
+    ["SQL", "Power BI", "Excel", "KPI & Reporting", "Statistiques"],
+    "Au siège mondial de Lesaffre à Marcq-en-Barœul, accompagnez la direction Data dans la construction de dashboards industriels sur 3 à 4 mois."
+  ),
+  make(
+    "feed-exotec-data-analyst-croix-3m",
+    "Stage Data Analyst Flotte Robots & Télémétrie (F/H) - 3 à 4 mois",
+    "Exotec",
+    "Croix / Lille (59)",
+    "3 à 4 mois",
+    "1 350 € - 1 650 € / mois",
+    1350,
+    ["Gratification Licorne Industrielle", "Tickets Restaurant Swile", "Transport 80%", "Accès pré-embauche"],
+    "https://fr.indeed.com/jobs?q=Exotec+Data+Analyst&l=Croix",
+    "Indeed",
+    "recrutement.stages@exotec.com",
+    ["SQL", "Python", "Tableau", "Time-series data", "Git"],
+    "Stage de 3 à 4 mois chez la première licorne industrielle française à Croix pour monitorer les données opérationnelles des robots Skypod."
+  ),
+  make(
+    "feed-sncf-data-analyst-lille-3m",
+    "Stage Data Analyst TER & Flux Voyageurs (F/H) - 3 à 4 mois",
+    "SNCF Voyageurs",
+    "Lille Flandres / Hauts-de-France (59)",
+    "3 à 4 mois",
+    "1 200 € - 1 450 € / mois",
+    1200,
+    ["Gratification conventionnelle SNCF", "Facilités de transport ferroviaire", "Accès RIE SNCF"],
+    "https://www.1jeune1solution.gouv.fr/stages?motCle=Data+Analyst+SNCF+Lille",
+    "1jeune1solution",
+    "emploi.stages@sncf.fr",
+    ["SQL", "Python", "Power BI", "Data Visualization", "Excel"],
+    "Stage de 3 à 4 mois à la direction régionale SNCF Voyageurs de Lille pour analyser la ponctualité et la fréquentation des lignes TER Hauts-de-France."
+  ),
+  make(
+    "feed-edf-data-analyst-lille-3m",
+    "Stage Data Analyst Énergies & Analyse Consommation (F/H) - 3 à 4 mois",
+    "EDF Commerce Nord",
+    "Lille (59)",
+    "3 à 4 mois",
+    "1 200 € - 1 450 € / mois",
+    1200,
+    ["Gratification groupe EDF", "Tickets Restaurant / RIE", "Transport remboursé 50%", "Télétravail"],
+    "https://www.hellowork.com/fr-fr/emploi/recherche.html?k=Data+Analyst+EDF&l=Lille&c=Stage",
+    "HelloWork",
+    "recrutement.stages@edf.fr",
+    ["SQL", "Python", "Power BI", "Statistiques", "Excel"],
+    "Stage de 3 à 4 mois chez EDF Commerce à Lille pour modéliser les courbes de charge et la consommation énergétique régionale."
+  ),
+  make(
+    "feed-maif-data-analyst-lille-3m",
+    "Stage Data Analyst Sociétaires & RSE (F/H) - 3 à 4 mois",
+    "MAIF",
+    "Lille / Roubaix (59)",
+    "3 à 4 mois",
+    "1 250 € - 1 500 € / mois",
+    1250,
+    ["Gratification mutuelle attractive", "Tickets Restaurant Swile", "Transport 80%", "Télétravail flexible"],
+    "https://fr.indeed.com/jobs?q=MAIF+Data+Analyst&l=Lille",
+    "Indeed",
+    "stages@maif.fr",
+    ["SQL", "Python", "Power BI", "Statistiques", "Excel"],
+    "Contribuer au suivi des engagements d'entreprise à mission et à l'analyse de satisfaction des sociétaires sur 3 à 4 mois."
+  ),
+  make(
+    "feed-kpmg-data-analyst-lille-3m",
+    "Stage Data & Digital Analytics Audit (F/H) - 3 à 4 mois",
+    "KPMG France",
+    "Marcq-en-Barœul / Lille (59)",
+    "3 à 4 mois",
+    "1 300 € - 1 550 € / mois",
+    1300,
+    ["Gratification cabinet Big Four", "Tickets Restaurant Swile", "Transport 50%", "Accès pré-embauche"],
+    "https://www.google.com/search?q=KPMG+Data+Analyst+stage+Lille&ibp=htl;jobs",
+    "JobTeaser",
+    "recrutement.stages@kpmg.fr",
+    ["Alteryx", "Power BI", "SQL", "Excel", "Analyse financière"],
+    "Stage de 3 à 4 mois au bureau KPMG de Marcq-en-Barœul pour automatiser l'analyse de données financières lors des missions d'audit."
+  ),
+  make(
+    "feed-dataiku-stage-solution-analyst",
+    "Stage Solution & Data Analyst (F/H) - 4 à 6 mois",
+    "Dataiku",
+    "Paris (75)",
+    "4 à 6 mois",
+    "1 400 € - 1 700 € / mois",
+    1400,
+    ["Gratification Tech IA", "MacBook Pro M-series", "Tickets Restaurant Swile", "Transport 50%"],
+    "https://www.welcometothejungle.com/fr/companies/dataiku/jobs/stage-data-science-ai-solution-analyst",
+    "Welcome to the Jungle",
+    "tech.recrutement@scaleup.fr",
+    ["Dataiku", "Python", "SQL", "Machine Learning", "Data Visualization"],
+    "Travaillez chez l'un des leaders mondiaux des plateformes d'IA pour déployer des solutions de data science et analytics."
+  ),
+  make(
+    "feed-sephora-data-analyst-crm",
+    "Stage Data Analyst E-Commerce & CRM Beauté (F/H) - 4 à 6 mois",
+    "Sephora / LVMH",
+    "Neuilly-sur-Seine / Paris (92)",
+    "4 à 6 mois",
+    "1 350 € - 1 650 € / mois",
+    1350,
+    ["Gratification Luxe / Retail", "Tickets Restaurant Swile", "Transport 50%", "Ventes privées LVMH"],
+    "https://www.welcometothejungle.com/fr/companies/sephora/jobs/stage-data-analyst-crm-neuilly",
+    "Welcome to the Jungle",
+    "stages.talents@lvmh.fr",
+    ["SQL", "Python", "Tableau", "Marketing Digital", "Statistiques"],
+    "Au siège EME de Sephora, travaillez sur des données retail et beauté de premier plan au sein du groupe LVMH."
+  ),
+  make(
+    "feed-backmarket-data-analyst-ops",
+    "Stage Data Analyst ReCommerce & Supply (F/H) - 4 à 6 mois",
+    "Back Market",
+    "Paris / Télétravail (France)",
+    "4 à 6 mois",
+    "1 300 € - 1 600 € / mois",
+    1300,
+    ["Gratification Scale-up", "MacBook Pro", "Tickets Restaurant Swile", "Télétravail flexible"],
+    "https://www.welcometothejungle.com/fr/companies/back-market/jobs/stage-data-analyst-ops-paris",
+    "Welcome to the Jungle",
+    "tech.recrutement@scaleup.fr",
+    ["SQL", "dbt", "Tableau", "Python", "Git"],
+    "Rejoignez la licorne française du reconditionné pour analyser les indicateurs de qualité marchande et supply."
+  ),
+  make(
+    "feed-deloitte-data-analyst-audit",
+    "Stage Data Analyst Audit & Conseil Financier (F/H) - 4 à 6 mois",
+    "Deloitte France",
+    "Lille / Paris (France)",
+    "4 à 6 mois",
+    "1 400 € - 1 700 € / mois",
+    1400,
+    ["Gratification Big Four", "Tickets Restaurant Swile", "Transport 50%", "Pré-embauche CDI Audit"],
+    "https://www.google.com/search?q=Deloitte+Data+Analyst+stage+Lille&ibp=htl;jobs",
+    "JobTeaser",
+    "recrutement.stages@deloitte.fr",
+    ["SQL", "Power BI", "Alteryx", "Python", "Contrôle de gestion"],
+    "Démarrez votre carrière dans un cabinet d'audit d'envergure mondiale avec une forte perspective d'embauche."
+  ),
+  make(
+    "feed-alstom-data-ingenierie",
+    "Stage Data Analyst & Ingénierie Ferroviaire (F/H) - 4 à 6 mois",
+    "Alstom Transport",
+    "Valenciennes / Lille (59)",
+    "4 à 6 mois",
+    "1 250 € - 1 500 € / mois",
+    1250,
+    ["Gratification industrie", "RIE Alstom", "Transport 50%", "Avantages CSE Alstom"],
+    "https://jobs.smartrecruiters.com/Alstom/stage-conception-mecanique-valenciennes",
+    "Portail Entreprise",
+    "recrutement.stages@alstom.com",
+    ["SQL", "Python", "Power BI", "KPI & Reporting", "Excel"],
+    "Sur le site de Valenciennes Petite-Forêt, centre d'excellence ferroviaire, analysez les données de tests et production des rames."
+  ),
 ];

@@ -258,6 +258,8 @@ export function enrichOfferMetadata(params: {
 }): {
   duration: string;
   durationMonths: number;
+  minDurationMonths: number;
+  maxDurationMonths: number;
   studyLevel: string;
   workMode: WorkMode;
   remuneration: string;
@@ -270,8 +272,10 @@ export function enrichOfferMetadata(params: {
   const companyLower = params.company.toLowerCase();
 
   // 1. Duration extraction
-  let duration = "4 à 6 mois";
+  let duration = "3 à 6 mois (durée adaptable)";
   let durationMonths = 6;
+  let minDurationMonths = 3;
+  let maxDurationMonths = 6;
   const durRangeMatch = combined.match(/(\d)\s*(?:à|a|-|ou)\s*(\d)\s*mois/);
   const durSingleMatch = combined.match(/(\d)\s*mois/);
   if (durRangeMatch) {
@@ -280,12 +284,16 @@ export function enrichOfferMetadata(params: {
     if (d1 >= 1 && d2 <= 12) {
       duration = `${d1} à ${d2} mois`;
       durationMonths = d2;
+      minDurationMonths = d1;
+      maxDurationMonths = d2;
     }
   } else if (durSingleMatch) {
     const d = Number(durSingleMatch[1]);
     if (d >= 1 && d <= 12) {
       duration = `${d} mois`;
       durationMonths = d;
+      minDurationMonths = d;
+      maxDurationMonths = d;
     }
   }
 
@@ -418,6 +426,8 @@ export function enrichOfferMetadata(params: {
   return {
     duration,
     durationMonths,
+    minDurationMonths,
+    maxDurationMonths,
     studyLevel,
     workMode,
     remuneration,

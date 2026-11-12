@@ -13,6 +13,8 @@ export interface JobOffer {
   date: string;
   duration: string;
   durationMonths?: number;
+  minDurationMonths?: number;
+  maxDurationMonths?: number;
   studyLevel?: string;
   workMode?: WorkMode;
   remuneration?: string;
