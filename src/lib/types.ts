@@ -1,3 +1,6 @@
+export type ContractTypeFilter = "STAGE_ONLY" | "STAGE_AND_ALTERNANCE" | "ALTERNANCE_ONLY";
+export type OfferContractType = "Stage" | "Alternance";
+
 export type ApplicationStatus = "Envoyé" | "En attente" | "Entretien" | "Refus";
 
 export type WorkMode = "Présentiel" | "Hybride / Télétravail" | "Télétravail complet";
@@ -35,6 +38,18 @@ export interface JobOffer {
   description: string;
   matchScore?: number;
   matchedSkills?: string[];
+  contractType?: OfferContractType;
+  companyGroup?: string;
+  isTopDataEmployer?: boolean;
+  perksDetailed?: {
+    meal?: string;
+    transport?: string;
+    bonus?: string;
+    cse?: string;
+    remote?: string;
+    hiring?: string;
+  };
+  mergedSources?: string[];
 }
 
 export interface SearchFilters {
@@ -48,6 +63,7 @@ export interface SearchFilters {
   maxOffers: number;
   onlyVerifiedEmails: boolean;
   onlyFavorites: boolean;
+  contractTypeFilter: ContractTypeFilter;
 }
 
 export interface CandidateProfile {

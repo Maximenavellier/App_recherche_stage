@@ -62,17 +62,76 @@ import {
 } from "@/lib/offers-data";
 
 const DEFAULT_FILTERS: SearchFilters = {
-  city: "France",
+  city: "Lille / Hauts-de-France (Priorité) + France",
   radiusKm: 25,
   durationFilter: "ALL",
   studyLevelFilter: "ALL",
   workModeFilter: "ALL",
   minRemuneration: 0,
   requiredPerk: "ALL",
-  maxOffers: 25,
+  maxOffers: 35,
   onlyVerifiedEmails: false,
   onlyFavorites: false,
+  contractTypeFilter: "STAGE_ONLY",
 };
+
+function getSourceBadgeStyle(source: string): { label: string; classes: string } {
+  const s = (source || "").toLowerCase();
+  if (s.includes("welcome") || s.includes("wttj")) {
+    return {
+      label: "🌟 Welcome to the Jungle",
+      classes:
+        "bg-amber-50 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/60",
+    };
+  }
+  if (s.includes("mulliez") || s.includes("afm")) {
+    return {
+      label: "🏢 Portail Galaxie Mulliez / AFM",
+      classes:
+        "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-700/60",
+    };
+  }
+  if (s.includes("banque") || s.includes("assurance")) {
+    return {
+      label: "🏦 Portail Banques & Assurances",
+      classes:
+        "bg-emerald-50 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700/60",
+    };
+  }
+  if (s.includes("1jeune") || s.includes("gouv")) {
+    return {
+      label: "🇫🇷 1jeune1solution.gouv",
+      classes:
+        "bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-700/60",
+    };
+  }
+  if (s.includes("stage.fr")) {
+    return {
+      label: "🎓 Stage.fr",
+      classes:
+        "bg-violet-50 text-violet-800 border-violet-300 dark:bg-violet-950/60 dark:text-violet-300 dark:border-violet-700/60",
+    };
+  }
+  if (s.includes("indeed")) {
+    return {
+      label: "🔎 Indeed",
+      classes:
+        "bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-700/60",
+    };
+  }
+  if (s.includes("linkedin")) {
+    return {
+      label: "💼 LinkedIn Jobs",
+      classes:
+        "bg-indigo-50 text-indigo-800 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-700/60",
+    };
+  }
+  return {
+    label: `🌐 ${source}`,
+    classes:
+      "bg-teal-50 text-teal-800 border-teal-300 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-700/60",
+  };
+}
 
 const APPS_SCRIPT_SNIPPET = `function doPost(e) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
@@ -115,6 +174,9 @@ export default function StagePilotDashboard() {
   const [showFiltersPanel, setShowFiltersPanel] = useState<boolean>(false);
   const [favoriteOfferIds, setFavoriteOfferIds] = useState<string[]>([]);
   const [currentOffset, setCurrentOffset] = useState<number>(0);
+  const [sourceBreakdown, setSourceBreakdown] = useState<Record<string, number>>({});
+  const [rejectedCdiCount, setRejectedCdiCount] = useState<number>(0);
+  const [selectedSourceFilter, setSelectedSourceFilter] = useState<string>("ALL");
 
   const [rawScrapedOffers, setRawScrapedOffers] = useState<JobOffer[]>(VERIFIED_JOB_OFFERS);
   const [offers, setOffers] = useState<JobOffer[]>(() =>
@@ -274,17 +336,24 @@ export default function StagePilotDashboard() {
           filters.city,
           filters.radiusKm,
           filters.maxOffers,
-          true
+          true,
+          0,
+          filters.contractTypeFilter
         );
       }
     }, 650);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, filters.city, filters.radiusKm, filters.maxOffers]);
+  }, [searchQuery, filters.city, filters.radiusKm, filters.maxOffers, filters.contractTypeFilter]);
 
-  // Client-side filtering on top of live scraped offers (duration, studyLevel, workMode, remuneration, perks, favorites)
+  // Client-side filtering on top of live scraped offers (source, duration, studyLevel, workMode, remuneration, perks, favorites)
   const displayedOffers = useMemo(() => {
     return offers.filter((offer) => {
+      if (selectedSourceFilter !== "ALL") {
+        const matchesMain = offer.source === selectedSourceFilter;
+        const matchesMerged = offer.mergedSources?.includes(selectedSourceFilter);
+        if (!matchesMain && !matchesMerged) return false;
+      }
       if (filters.onlyFavorites && !favoriteOfferIds.includes(offer.id)) {
         return false;
       }
@@ -318,7 +387,7 @@ export default function StagePilotDashboard() {
       }
       return true;
     });
-  }, [offers, filters, favoriteOfferIds]);
+  }, [offers, filters, favoriteOfferIds, selectedSourceFilter]);
 
   // Calculate Top Application Stats
   const stats = useMemo(() => {
@@ -343,7 +412,8 @@ export default function StagePilotDashboard() {
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
-    if (filters.city !== "France") count++;
+    if (filters.city !== "Lille / Hauts-de-France (Priorité) + France" && filters.city !== "France") count++;
+    if (filters.contractTypeFilter !== "STAGE_ONLY") count++;
     if (filters.durationFilter !== "ALL") count++;
     if (filters.studyLevelFilter !== "ALL") count++;
     if (filters.workModeFilter !== "ALL") count++;
@@ -351,8 +421,9 @@ export default function StagePilotDashboard() {
     if (filters.requiredPerk !== "ALL") count++;
     if (filters.onlyVerifiedEmails) count++;
     if (filters.onlyFavorites) count++;
+    if (selectedSourceFilter !== "ALL") count++;
     return count;
-  }, [filters]);
+  }, [filters, selectedSourceFilter]);
 
   const toggleFavorite = (offerId: string) => {
     setFavoriteOfferIds((prev) => {
@@ -446,7 +517,8 @@ export default function StagePilotDashboard() {
     customRadius = filters.radiusKm,
     customMaxOffers = filters.maxOffers,
     silent = false,
-    appendOffset = 0
+    appendOffset = 0,
+    customContractTypeFilter = filters.contractTypeFilter
   ) => {
     if (appendOffset > 0) {
       setIsLoadingMore(true);
@@ -467,9 +539,16 @@ export default function StagePilotDashboard() {
           radiusKm: customRadius,
           maxOffers: customMaxOffers,
           startOffset: appendOffset,
+          contractTypeFilter: customContractTypeFilter,
         }),
       });
       const data = await res.json();
+      if (data.sourceBreakdown && typeof data.sourceBreakdown === "object") {
+        setSourceBreakdown(data.sourceBreakdown);
+      }
+      if (typeof data.rejectedCdiCount === "number") {
+        setRejectedCdiCount(data.rejectedCdiCount);
+      }
       if (Array.isArray(data.offers) && data.offers.length > 0) {
         if (appendOffset > 0) {
           setRawScrapedOffers((prev) => {
@@ -494,8 +573,8 @@ export default function StagePilotDashboard() {
       if (!silent) {
         setNotification({
           type: "info",
-          title: `Recherche en direct : « Stage ${data.effectiveQuery || customQuery} » (${customCity})`,
-          detail: `${data.offers?.length || 0} offres réelles extraites en temps réel et scorées selon votre profil.`,
+          title: `Recherche Multi-Sources : « Stage ${data.effectiveQuery || customQuery} » (${customCity})`,
+          detail: `${data.offers?.length || 0} offres de stage vérifiées (0% CDI/CDD) fusionnées depuis LinkedIn, WTTJ, 1jeune1solution, Stage.fr, Indeed & Portails Entreprises.`,
         });
       }
     } catch {
@@ -1201,7 +1280,7 @@ export default function StagePilotDashboard() {
                     {/* City Filter */}
                     <div>
                       <label className="block text-[11px] font-semibold uppercase text-gray-600 dark:text-gray-300 mb-1">
-                        Ville ou Région
+                        Ville ou Région (Priorité Lille & Nord par défaut)
                       </label>
                       <div className="relative">
                         <MapPin className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -1211,28 +1290,56 @@ export default function StagePilotDashboard() {
                           onChange={(e) =>
                             setFilters({ ...filters, city: e.target.value })
                           }
-                          placeholder="Ex: Paris, Lille, Lyon, France..."
+                          placeholder="Ex: Lille, Paris, Lyon, France..."
                           className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-gray-200 dark:border-[#2E2E2E] bg-white dark:bg-[#121212] text-gray-900 dark:text-gray-100"
                         />
                       </div>
                       <div className="flex flex-wrap gap-1 mt-1.5">
-                        {["France", "Paris", "Lille", "Lyon", "Toulouse", "Bordeaux", "Nantes"].map(
-                          (c) => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => setFilters({ ...filters, city: c })}
-                              className={`px-2 py-0.5 text-[10px] rounded-md border ${
-                                filters.city.toLowerCase() === c.toLowerCase()
-                                  ? "border-indigo-600 bg-indigo-600 text-white"
-                                  : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1A1A1A] text-gray-600 dark:text-gray-400"
-                              }`}
-                            >
-                              {c}
-                            </button>
-                          )
-                        )}
+                        {[
+                          { label: "⭐ Lille (Priorité) + France", val: "Lille / Hauts-de-France (Priorité) + France" },
+                          { label: "Lille / Nord", val: "Lille" },
+                          { label: "Paris / IDF", val: "Paris" },
+                          { label: "Lyon", val: "Lyon" },
+                          { label: "Nantes", val: "Nantes" },
+                          { label: "Bordeaux", val: "Bordeaux" },
+                          { label: "Toulouse", val: "Toulouse" },
+                          { label: "France entière", val: "France" },
+                        ].map((c) => (
+                          <button
+                            key={c.val}
+                            type="button"
+                            onClick={() => setFilters({ ...filters, city: c.val })}
+                            className={`px-2 py-0.5 text-[10px] rounded-md border ${
+                              filters.city.toLowerCase() === c.val.toLowerCase()
+                                ? "border-indigo-600 bg-indigo-600 text-white font-semibold"
+                                : "border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1A1A1A] text-gray-600 dark:text-gray-400"
+                            }`}
+                          >
+                            {c.label}
+                          </button>
+                        ))}
                       </div>
+                    </div>
+
+                    {/* Strict Contract Type Filter (Anti-CDI/CDD) */}
+                    <div>
+                      <label className="block text-[11px] font-semibold uppercase text-emerald-700 dark:text-emerald-400 mb-1">
+                        🛡️ Type de contrat (Anti-CDI actif)
+                      </label>
+                      <select
+                        value={filters.contractTypeFilter}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            contractTypeFilter: e.target.value as SearchFilters["contractTypeFilter"],
+                          })
+                        }
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-emerald-300 dark:border-emerald-800/70 bg-white dark:bg-[#121212] text-gray-900 dark:text-gray-100 font-semibold"
+                      >
+                        <option value="STAGE_ONLY">Stages uniquement (0% CDI/CDD — Par défaut)</option>
+                        <option value="STAGE_AND_ALTERNANCE">Stages + Alternances (0% CDI/CDD)</option>
+                        <option value="ALTERNANCE_ONLY">Alternances uniquement</option>
+                      </select>
                     </div>
 
                     {/* Radius in km */}
@@ -1379,7 +1486,8 @@ export default function StagePilotDashboard() {
                         className="w-full px-3 py-2 text-xs rounded-xl border border-gray-200 dark:border-[#2E2E2E] bg-white dark:bg-[#121212] text-gray-900 dark:text-gray-100 font-semibold"
                       >
                         <option value={15}>15 offres par recherche</option>
-                        <option value={25}>25 offres par recherche (Recommandé)</option>
+                        <option value={25}>25 offres par recherche</option>
+                        <option value={35}>35 offres par recherche (Recommandé)</option>
                         <option value={50}>50 offres par recherche (Maximum)</option>
                       </select>
                     </div>
@@ -1551,21 +1659,93 @@ export default function StagePilotDashboard() {
               </div>
             </section>
 
+            {/* Multi-Source Breakdown Bar & Anti-CDI Shield */}
+            <section className="p-4 sm:p-5 rounded-2xl border border-gray-200 dark:border-[#2A2A2A] bg-white dark:bg-[#1E1E1E] shadow-xs space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Sources interrogées & Déduplication active</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/60">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>
+                      Filtre strict Anti-CDI/CDD actif
+                      {rejectedCdiCount > 0 ? ` (${rejectedCdiCount} CDI/CDD écartés)` : ""}
+                    </span>
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {[
+                    { label: "⭐ Priorité Lille + France", city: "Lille / Hauts-de-France (Priorité) + France" },
+                    { label: "📍 Lille / Nord uniquement", city: "Lille" },
+                    { label: "📍 Paris / IDF", city: "Paris" },
+                  ].map((btn) => (
+                    <button
+                      key={btn.city}
+                      type="button"
+                      onClick={() => setFilters({ ...filters, city: btn.city })}
+                      className={`px-2.5 py-1 text-[11px] font-semibold rounded-xl border transition-all ${
+                        filters.city === btn.city
+                          ? "border-indigo-600 bg-indigo-600 text-white"
+                          : "border-gray-200 dark:border-[#2E2E2E] bg-gray-50 dark:bg-[#141414] text-gray-700 dark:text-gray-300 hover:border-indigo-400"
+                      }`}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Clickable Source Filter Pills */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSourceFilter("ALL")}
+                  className={`px-3 py-1 text-xs font-semibold rounded-xl border transition-all ${
+                    selectedSourceFilter === "ALL"
+                      ? "border-indigo-600 bg-indigo-600 text-white"
+                      : "border-gray-200 dark:border-[#2E2E2E] bg-gray-50 dark:bg-[#141414] text-gray-700 dark:text-gray-300"
+                  }`}
+                >
+                  Toutes les sources ({offers.length})
+                </button>
+                {Object.entries(sourceBreakdown).map(([srcName, count]) => {
+                  const badge = getSourceBadgeStyle(srcName);
+                  const isActive = selectedSourceFilter === srcName;
+                  return (
+                    <button
+                      key={srcName}
+                      type="button"
+                      onClick={() =>
+                        setSelectedSourceFilter(isActive ? "ALL" : srcName)
+                      }
+                      className={`px-3 py-1 text-xs font-semibold rounded-xl border transition-all ${
+                        isActive
+                          ? "border-indigo-600 bg-indigo-600 text-white shadow-xs"
+                          : badge.classes
+                      }`}
+                    >
+                      {badge.label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
             {/* Offers List */}
             <section className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
                     Offres de stage correspondantes ({displayedOffers.length})
                   </h2>
-                  {filters.city !== "France" && (
-                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-medium">
-                      📍 {filters.city} (±{filters.radiusKm} km)
-                    </span>
-                  )}
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-medium">
+                    📍 {filters.city}
+                  </span>
                 </div>
                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                  Rémunérations affichées ou estimées selon la grille de l&apos;entreprise
+                  Grilles salariales & avantages réels (Galaxie Mulliez, Banques, Retail, Tech)
                 </span>
               </div>
 
@@ -1575,10 +1755,13 @@ export default function StagePilotDashboard() {
                     Aucune offre ne correspond à ces filtres stricts.
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Essayez d&apos;élargir les filtres (durée, rémunération minimale ou rayon en km) ou de lancer une nouvelle recherche.
+                    Essayez d&apos;élargir les filtres (source, durée, rémunération minimale) ou de réinitialiser.
                   </p>
                   <button
-                    onClick={() => setFilters(DEFAULT_FILTERS)}
+                    onClick={() => {
+                      setFilters(DEFAULT_FILTERS);
+                      setSelectedSourceFilter("ALL");
+                    }}
                     className="px-4 py-2 text-xs font-semibold rounded-xl bg-indigo-600 text-white"
                   >
                     Réinitialiser tous les filtres
@@ -1591,6 +1774,7 @@ export default function StagePilotDashboard() {
                     const isApplyingThis = applyingOfferId === offer.id;
                     const isFav = favoriteOfferIds.includes(offer.id);
                     const score = offer.matchScore || 88;
+                    const sourceBadge = getSourceBadgeStyle(offer.source);
 
                     return (
                       <article
@@ -1600,12 +1784,41 @@ export default function StagePilotDashboard() {
                         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6">
                           {/* Offer Main Information */}
                           <div className="space-y-4 flex-1">
-                            {/* Meta Header: Company, Location, Date, Duration, Study Level, Work Mode */}
+                            {/* Meta Header: Company, Top Data Employer Badge, Source Badge, Location, Duration */}
                             <div className="flex flex-wrap items-center gap-2 text-xs">
                               <span className="inline-flex items-center gap-1.5 font-bold text-indigo-950 dark:text-indigo-200 bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1 rounded-xl border border-indigo-200/80 dark:border-indigo-800/60">
                                 <Building2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                                 {offer.company}
                               </span>
+
+                              {/* Source Badge + Deduplicated Merged Sources */}
+                              <a
+                                href={offer.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Ouvrir l'annonce originale sur la source"
+                                className={`inline-flex items-center gap-1 font-semibold px-2.5 py-1 rounded-xl border hover:opacity-90 transition-opacity ${sourceBadge.classes}`}
+                              >
+                                <span>{sourceBadge.label}</span>
+                                <ExternalLink className="w-3 h-3 opacity-75" />
+                              </a>
+
+                              {offer.mergedSources && offer.mergedSources.length > 1 && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800">
+                                  🔗 Fusionné ({offer.mergedSources.join(" + ")})
+                                </span>
+                              )}
+
+                              {offer.isTopDataEmployer && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-amber-100/90 text-amber-900 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-700">
+                                  ★ Top Employeur Data · {offer.companyGroup || "Avantages Premium"}
+                                </span>
+                              )}
+
+                              <span className="inline-flex items-center gap-1 font-semibold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 px-2.5 py-1 rounded-xl">
+                                {offer.contractType || "Stage"}
+                              </span>
+
                               <span className="inline-flex items-center gap-1 font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-[#262626] px-2.5 py-1 rounded-xl">
                                 <MapPin className="w-3.5 h-3.5 text-rose-500" />
                                 {offer.location}
@@ -1661,8 +1874,8 @@ export default function StagePilotDashboard() {
                                 <span
                                   className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold border ${
                                     offer.isRemunerationEstimated
-                                      ? "border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300"
-                                      : "border-emerald-400 bg-emerald-100 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200"
+                                      ? "border-emerald-300 dark:border-emerald-800/60 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300"
+                                      : "border-emerald-500 bg-emerald-100 dark:bg-emerald-900/60 text-emerald-950 dark:text-emerald-200"
                                   }`}
                                 >
                                   <Coins className="w-3.5 h-3.5" />
@@ -1670,7 +1883,7 @@ export default function StagePilotDashboard() {
                                     {offer.remuneration}{" "}
                                     <span className="font-normal text-[11px] opacity-85">
                                       {offer.isRemunerationEstimated
-                                        ? "(Estimation barème entreprise)"
+                                        ? `(Barème ${offer.companyGroup || "entreprise"})`
                                         : "(Affiché dans l'offre)"}
                                     </span>
                                   </span>
@@ -1688,6 +1901,56 @@ export default function StagePilotDashboard() {
                                   </span>
                                 ))}
                             </div>
+
+                            {/* Detailed Group Perks Box (when available from Top Data Employers DB) */}
+                            {offer.perksDetailed && (
+                              <div className="p-3.5 rounded-2xl border border-emerald-200/80 dark:border-emerald-900/50 bg-emerald-50/30 dark:bg-[#131d19] space-y-2">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                  <span>
+                                    Détail Salaires, Primes & Avantages Groupe ({offer.companyGroup || offer.company})
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-700 dark:text-gray-300">
+                                  {offer.perksDetailed.bonus && (
+                                    <div>
+                                      <span className="font-semibold text-emerald-800 dark:text-emerald-300">💰 Gratification & Primes : </span>
+                                      {offer.perksDetailed.bonus}
+                                    </div>
+                                  )}
+                                  {offer.perksDetailed.meal && (
+                                    <div>
+                                      <span className="font-semibold text-emerald-800 dark:text-emerald-300">🍽️ Restauration : </span>
+                                      {offer.perksDetailed.meal}
+                                    </div>
+                                  )}
+                                  {offer.perksDetailed.transport && (
+                                    <div>
+                                      <span className="font-semibold text-emerald-800 dark:text-emerald-300">🚆 Transport & Mobilité : </span>
+                                      {offer.perksDetailed.transport}
+                                    </div>
+                                  )}
+                                  {offer.perksDetailed.cse && (
+                                    <div>
+                                      <span className="font-semibold text-emerald-800 dark:text-emerald-300">🎁 CSE & Avantages : </span>
+                                      {offer.perksDetailed.cse}
+                                    </div>
+                                  )}
+                                  {offer.perksDetailed.remote && (
+                                    <div>
+                                      <span className="font-semibold text-emerald-800 dark:text-emerald-300">🏠 Télétravail : </span>
+                                      {offer.perksDetailed.remote}
+                                    </div>
+                                  )}
+                                  {offer.perksDetailed.hiring && (
+                                    <div>
+                                      <span className="font-semibold text-emerald-800 dark:text-emerald-300">🚀 Pré-embauche CDI : </span>
+                                      {offer.perksDetailed.hiring}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
 
                             {/* Required Skills */}
                             <div className="space-y-2 pt-1">
