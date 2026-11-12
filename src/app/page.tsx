@@ -177,6 +177,7 @@ export default function StagePilotDashboard() {
   const [sourceBreakdown, setSourceBreakdown] = useState<Record<string, number>>({});
   const [rejectedCdiCount, setRejectedCdiCount] = useState<number>(0);
   const [selectedSourceFilter, setSelectedSourceFilter] = useState<string>("ALL");
+  const [sortBy, setSortBy] = useState<"score" | "salary">("score");
 
   const [rawScrapedOffers, setRawScrapedOffers] = useState<JobOffer[]>(VERIFIED_JOB_OFFERS);
   const [offers, setOffers] = useState<JobOffer[]>(() =>
@@ -306,10 +307,29 @@ export default function StagePilotDashboard() {
     }
   };
 
-  // Re-rank offers whenever keywords change
+  // Re-rank offers whenever keywords or scraped pool change while preserving Top Employer & Lille priority boosts
   useEffect(() => {
-    setOffers(matchAndRankOffers(rawScrapedOffers, profile.keywords, searchQuery));
-  }, [rawScrapedOffers, profile.keywords]);
+    const ranked = matchAndRankOffers(rawScrapedOffers, profile.keywords, searchQuery);
+    const isLillePreferred = /lille|hauts-de-france|nord|priorit[ée]/i.test(filters.city);
+    const boosted = ranked.map((offer) => {
+      let score = offer.matchScore || 50;
+      if (offer.isTopDataEmployer) score += 8;
+      const isLille =
+        /\b(lille|villeneuve[\s-]?d['’]?ascq|lezennes|roubaix|lesquin|hem|tourcoing|marcq|seclin|douai|valenciennes|59|hauts[\s-]?de[\s-]?france|nord)\b/i.test(
+          (offer.location || "").toLowerCase()
+        );
+      if (isLillePreferred && isLille) score += 6;
+      return { ...offer, matchScore: Math.min(99, score) };
+    });
+    boosted.sort((a, b) => {
+      const diff = (b.matchScore || 0) - (a.matchScore || 0);
+      if (diff !== 0) return diff;
+      const locA = /\b(lille|villeneuve|lezennes|roubaix|lesquin|hem|59|nord)\b/i.test(a.location) ? 2 : /paris|75|92/i.test(a.location) ? 1 : 0;
+      const locB = /\b(lille|villeneuve|lezennes|roubaix|lesquin|hem|59|nord)\b/i.test(b.location) ? 2 : /paris|75|92/i.test(b.location) ? 1 : 0;
+      return locB - locA;
+    });
+    setOffers(boosted);
+  }, [rawScrapedOffers, profile.keywords, filters.city]);
 
   // Auto-scrape on mount & when searchQuery, city, radius, or maxOffers change
   useEffect(() => {
@@ -346,9 +366,35 @@ export default function StagePilotDashboard() {
     return () => clearTimeout(timer);
   }, [searchQuery, filters.city, filters.radiusKm, filters.maxOffers, filters.contractTypeFilter]);
 
-  // Client-side filtering on top of live scraped offers (source, duration, studyLevel, workMode, remuneration, perks, favorites)
+  // Client-side filtering & sorting on top of live scraped offers (city, source, duration, studyLevel, workMode, remuneration, perks, favorites)
   const displayedOffers = useMemo(() => {
-    return offers.filter((offer) => {
+    const cityTrim = filters.city.trim().toLowerCase();
+    const isBroadFranceOrPriority =
+      !cityTrim || cityTrim === "france" || cityTrim.includes("priorité");
+
+    const filtered = offers.filter((offer) => {
+      if (!isBroadFranceOrPriority) {
+        const offerLoc = (offer.location || "").toLowerCase();
+        if (cityTrim.includes("lille")) {
+          if (
+            !/\b(lille|villeneuve|lezennes|roubaix|lesquin|hem|tourcoing|marcq|seclin|douai|valenciennes|59|nord|hauts-de-france)\b/i.test(
+              offerLoc
+            )
+          ) {
+            return false;
+          }
+        } else if (cityTrim.includes("paris")) {
+          if (
+            !/\b(paris|massy|nanterre|montrouge|boulogne|issy|d[ée]fense|neuilly|courbevoie|levallois|75|92|93|94|91|78|idf|[îi]le-de-france)\b/i.test(
+              offerLoc
+            )
+          ) {
+            return false;
+          }
+        } else if (!offerLoc.includes(cityTrim) && offerLoc !== "france") {
+          return false;
+        }
+      }
       if (selectedSourceFilter !== "ALL") {
         const matchesMain = offer.source === selectedSourceFilter;
         const matchesMerged = offer.mergedSources?.includes(selectedSourceFilter);
@@ -387,7 +433,14 @@ export default function StagePilotDashboard() {
       }
       return true;
     });
-  }, [offers, filters, favoriteOfferIds, selectedSourceFilter]);
+
+    if (sortBy === "salary") {
+      return [...filtered].sort(
+        (a, b) => (b.remunerationMin || 0) - (a.remunerationMin || 0)
+      );
+    }
+    return filtered;
+  }, [offers, filters, favoriteOfferIds, selectedSourceFilter, sortBy]);
 
   // Calculate Top Application Stats
   const stats = useMemo(() => {
@@ -1744,9 +1797,35 @@ export default function StagePilotDashboard() {
                     📍 {filters.city}
                   </span>
                 </div>
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  Grilles salariales & avantages réels (Galaxie Mulliez, Banques, Retail, Tech)
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                    Trier par :
+                  </span>
+                  <div className="inline-flex rounded-xl border border-gray-200 dark:border-[#2E2E2E] bg-white dark:bg-[#1E1E1E] p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setSortBy("score")}
+                      className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-colors ${
+                        sortBy === "score"
+                          ? "bg-indigo-600 text-white"
+                          : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
+                      }`}
+                    >
+                      Compatibilité CV
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSortBy("salary")}
+                      className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-colors ${
+                        sortBy === "salary"
+                          ? "bg-emerald-600 text-white"
+                          : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
+                      }`}
+                    >
+                      💰 Meilleure rémunération
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {displayedOffers.length === 0 ? (
