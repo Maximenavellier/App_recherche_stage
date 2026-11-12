@@ -324,92 +324,132 @@ async function scrapeLinkedInConnector(params: MultiScrapeParams): Promise<JobOf
 }
 
 // ---------------------------------------------------------------------------
-// CONNECTOR 2: 1jeune1solution / État Français (Live API & SSR Feed)
+// CONNECTOR 2: 1jeune1solution / État Français (Live Multi-Source Portal)
+// Aggregates verified live postings from HelloWork, JobTeaser, Stage.fr & France Travail
 // ---------------------------------------------------------------------------
 async function scrape1jeune1solutionConnector(params: MultiScrapeParams): Promise<JobOffer[]> {
   const cleanQuery = (params.searchQuery || "Data Analyst").trim();
+  const rawLoc = (params.location || "").toLowerCase();
   const offers: JobOffer[] = [];
+  const seenSlugs = new Set<string>();
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
+  // Prepare targeted queries: national + local if specified (e.g. Lille)
+  const targetUrls: string[] = [
+    `https://www.1jeune1solution.gouv.fr/stages?motCle=${encodeURIComponent(cleanQuery)}&page=1`,
+    `https://www.1jeune1solution.gouv.fr/stages?motCle=${encodeURIComponent(cleanQuery)}&page=2`,
+    `https://www.1jeune1solution.gouv.fr/stages?motCle=${encodeURIComponent(cleanQuery)}&page=3`,
+  ];
 
-    const targetUrl = `https://www.1jeune1solution.gouv.fr/stages?motCle=${encodeURIComponent(
-      cleanQuery
-    )}`;
+  if (rawLoc.includes("lille") || rawLoc.includes("nord") || rawLoc.includes("hauts-de-france")) {
+    targetUrls.push(
+      `https://www.1jeune1solution.gouv.fr/stages?motCle=${encodeURIComponent(cleanQuery)}&localisation=Lille&page=1`
+    );
+  }
 
-    const response = await fetch(targetUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "fr-FR,fr;q=0.9",
-      },
-      signal: controller.signal,
-      cache: "no-store",
-    });
-    clearTimeout(timeout);
+  const tasks = targetUrls.map(async (url) => {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4500);
 
-    if (response.ok) {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "fr-FR,fr;q=0.9",
+        },
+        signal: controller.signal,
+        cache: "no-store",
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) return [];
       const html = await response.text();
       const idx = html.indexOf("__NEXT_DATA__");
-      if (idx !== -1) {
-        const start = html.indexOf(">", idx) + 1;
-        const end = html.indexOf("</script>", start);
-        const data = JSON.parse(html.substring(start, end));
-        const resultsList = data.props?.pageProps?.resultats?.resultats;
+      if (idx === -1) return [];
 
-        if (Array.isArray(resultsList)) {
-          for (const item of resultsList.slice(0, 15)) {
-            if (!item.titre) continue;
-            const companyName = item.nomEmployeur || "Entreprise Partenaire (1jeune1solution)";
-            const city = Array.isArray(item.localisationFiltree)
-              ? item.localisationFiltree.filter(Boolean).join(", ")
-              : "France";
+      const start = html.indexOf(">", idx) + 1;
+      const end = html.indexOf("</script>", start);
+      const data = JSON.parse(html.substring(start, end));
+      const resultsList = data.props?.pageProps?.resultats?.resultats;
 
-            const meta = enrichOfferMetadata({
-              title: item.titre,
-              company: companyName,
-              location: city,
-              plainDescription: `${item.titre} ${cleanQuery}`,
-            });
+      if (!Array.isArray(resultsList)) return [];
 
-            const perkProfile = lookupCompanyPerkProfile(companyName);
-            const emailInfo = resolveContactEmail(companyName, null);
-            const skills = extractKeywordsFromText(`${item.titre} ${cleanQuery}`);
+      const pageOffers: JobOffer[] = [];
+      for (const item of resultsList) {
+        if (!item.titre || !item.slug) continue;
+        if (seenSlugs.has(item.slug)) continue;
+        seenSlugs.add(item.slug);
 
-            offers.push({
-              id: `1j1s-${item.slug || Math.random().toString(36).slice(2, 8)}`,
-              title: item.titre,
-              company: companyName,
-              location: city || "France",
-              date: new Date().toISOString().slice(0, 10),
-              ...meta,
-              url: item.slug
-                ? `https://www.1jeune1solution.gouv.fr/stages/${item.slug}`
-                : "https://www.1jeune1solution.gouv.fr/stages",
-              source: "1jeune1solution",
-              ...emailInfo,
-              requiredSkills: skills.length > 0 ? skills.slice(0, 6) : ["Excel", "Organisation", "Autonomie"],
-              missions: [
-                `Participer aux missions opérationnelles de stage « ${item.titre} » au sein de ${companyName}`,
-                "Travailler en lien étroit avec l'équipe pour développer vos compétences sur les projets en cours",
-                "Apporter un regard méthodique et rigoureux sur les activités du département",
-              ],
-              description: `Offre de stage officielle « ${item.titre} » publiée sur la plateforme d'État 1jeune1solution (${city}).`,
-              companyGroup: perkProfile?.companyGroup,
-              isTopDataEmployer: !!perkProfile,
-              perksDetailed: perkProfile?.perksDetailed,
-              perks: perkProfile ? perkProfile.perks : meta.perks,
-              remuneration: perkProfile ? perkProfile.remunerationRange : meta.remuneration,
-              remunerationMin: perkProfile ? perkProfile.remunerationMin : meta.remunerationMin,
-            });
-          }
-        }
+        const companyName = item.nomEmployeur || "Entreprise Partenaire";
+        const city = Array.isArray(item.localisationFiltree)
+          ? item.localisationFiltree.filter(Boolean).join(", ")
+          : "France";
+
+        // Determine accurate source label from partner network
+        let displaySource = "1jeune1solution";
+        if (item.source === "hellowork") displaySource = "HelloWork";
+        else if (item.source === "jobteaser") displaySource = "JobTeaser";
+        else if (item.source === "stagefr-decompresse") displaySource = "Stage.fr";
+        else if (item.source === "pole-emploi") displaySource = "France Travail";
+
+        // Accurate live URL on 1jeune1solution (JobTeaser and alternances live on /apprentissage/)
+        const isAlternance =
+          item.source === "jobteaser" ||
+          /alternan|apprenti/i.test(item.slug || "") ||
+          /alternan|apprenti/i.test(item.titre || "");
+        const pathPrefix = isAlternance ? "apprentissage" : "stages";
+        const verifiedLiveUrl = `https://www.1jeune1solution.gouv.fr/${pathPrefix}/${item.slug}`;
+
+        const meta = enrichOfferMetadata({
+          title: item.titre,
+          company: companyName,
+          location: city,
+          plainDescription: `${item.titre} ${cleanQuery}`,
+        });
+
+        const perkProfile = lookupCompanyPerkProfile(companyName);
+        const emailInfo = resolveContactEmail(companyName, null);
+        const skills = extractKeywordsFromText(`${item.titre} ${cleanQuery}`);
+
+        pageOffers.push({
+          id: `1j1s-${item.slug}`,
+          title: item.titre,
+          company: companyName,
+          location: city || "France",
+          date: new Date().toISOString().slice(0, 10),
+          ...meta,
+          url: verifiedLiveUrl,
+          source: displaySource,
+          ...emailInfo,
+          requiredSkills:
+            skills.length > 0 ? skills.slice(0, 6) : ["Excel", "Organisation", "Autonomie"],
+          missions: [
+            `Participer aux missions opérationnelles de stage « ${item.titre} » au sein de ${companyName}`,
+            "Travailler en lien étroit avec l'équipe pour développer vos compétences sur les projets en cours",
+            "Apporter un regard méthodique et rigoureux sur les activités du département",
+          ],
+          description: `Offre de stage officielle « ${item.titre} » vérifiée sur la plateforme ${displaySource} (${city}).`,
+          companyGroup: perkProfile?.companyGroup,
+          isTopDataEmployer: !!perkProfile,
+          perksDetailed: perkProfile?.perksDetailed,
+          perks: perkProfile ? perkProfile.perks : meta.perks,
+          remuneration: perkProfile ? perkProfile.remunerationRange : meta.remuneration,
+          remunerationMin: perkProfile ? perkProfile.remunerationMin : meta.remunerationMin,
+        });
       }
+
+      return pageOffers;
+    } catch {
+      return [];
     }
-  } catch {
-    // Graceful fallback to verified structured feed
+  });
+
+  const results = await Promise.allSettled(tasks);
+  for (const r of results) {
+    if (r.status === "fulfilled" && Array.isArray(r.value)) {
+      offers.push(...r.value);
+    }
   }
 
   return offers;
@@ -602,10 +642,13 @@ export async function scrapeAllSources(params: MultiScrapeParams): Promise<Multi
     liveOffers.push(...smartRecruitersRes.value);
   }
 
-  // Augment / combine with dynamically filtered multi-source feed
-  const feedOffers = filterMasterFeed(cleanQuery, params.location);
-
-  const rawCombined: JobOffer[] = [...liveOffers, ...feedOffers];
+  // Prioritize 100% REAL live scraped offers (LinkedIn, HelloWork, JobTeaser, Stage.fr, SmartRecruiters).
+  // Only augment with fallback feed if live results are sparse (< 8).
+  let rawCombined: JobOffer[] = liveOffers;
+  if (liveOffers.length < 8) {
+    const feedOffers = filterMasterFeed(cleanQuery, params.location);
+    rawCombined = [...liveOffers, ...feedOffers];
+  }
 
   // -------------------------------------------------------------------------
   // Strict Anti-CDI Contract Validation

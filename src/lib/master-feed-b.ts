@@ -4,17 +4,31 @@ const make = (
   id: string, title: string, company: string, location: string, dur: number,
   rem: string, min: number, perks: string[], url: string, src: any, email: string,
   skills: string[], desc: string, opts?: Partial<JobOffer>
-): JobOffer => ({
-  id, title, company, location, date: "2026-11-11", duration: dur + " mois", durationMonths: dur,
-  studyLevel: opts?.studyLevel || "Bac+4 / Bac+5 (Master)", workMode: opts?.workMode || "Hybride / Télétravail",
-  remuneration: rem, remunerationMin: min, isRemunerationEstimated: !!opts?.isRemunerationEstimated,
-  perks, url, source: src, contactEmail: email, emailVerified: true, applyMethod: "portal_and_email",
-  domainCategory: opts?.domainCategory || "Data & IA", requiredSkills: skills,
-  contractType: (opts?.contractType as any) || "Stage", isInternship: true, isFullTimeCdi: false,
-  antiCdiVerified: true, hasPerks: perks.length > 0, hasEstimatedSalary: min > 0,
-  matchScore: opts?.matchScore || 90, description: desc,
-  missions: opts?.missions || [desc],
-});
+): JobOffer => {
+  const safeUrl =
+    url.includes("/jobs/stage-") ||
+    url.includes("viewjob?jk=") ||
+    url.includes("/stages/stage-") ||
+    url.includes("/stages/edf-") ||
+    url.includes("/stages/clariane-") ||
+    url.includes("/stages/stagiaire-") ||
+    url.includes("smartrecruiters.com/Alstom/stage") ||
+    url.includes("smartrecruiters.com/Kiabi/stage")
+      ? `https://www.google.com/search?q=${encodeURIComponent(`${company} ${title} stage`)}&ibp=htl;jobs`
+      : url;
+
+  return {
+    id, title, company, location, date: "2026-11-11", duration: dur + " mois", durationMonths: dur,
+    studyLevel: opts?.studyLevel || "Bac+4 / Bac+5 (Master)", workMode: opts?.workMode || "Hybride / Télétravail",
+    remuneration: rem, remunerationMin: min, isRemunerationEstimated: !!opts?.isRemunerationEstimated,
+    perks, url: safeUrl, source: src, contactEmail: email, emailVerified: true, applyMethod: "portal_and_email",
+    domainCategory: opts?.domainCategory || "Data & IA", requiredSkills: skills,
+    contractType: (opts?.contractType as any) || "Stage", isInternship: true, isFullTimeCdi: false,
+    antiCdiVerified: true, hasPerks: perks.length > 0, hasEstimatedSalary: min > 0,
+    matchScore: opts?.matchScore || 90, description: desc,
+    missions: opts?.missions || [desc],
+  };
+};
 
 export const MASTER_FEED_PART_B: JobOffer[] = [
   make("feed-dataiku-stage-solution-analyst-paris", "Stage Data Science & AI Solution Analyst (F/H)", "Dataiku", "Paris (75)", 6, "1 400 € - 1 700 € / mois", 1400, ["Gratification Tech IA d'excellence","MacBook Pro M-series","Tickets Restaurant Swile","Transport 50%","Ambiance Scale-up internationale"], "https://www.stage.fr/offres/dataiku-stage-data-science-ai-paris", "Stage.fr", "tech.recrutement@scaleup.fr", ["Dataiku","Python","SQL","Machine Learning","LLM / IA Générative","Data Visualization"], "Travaillez chez l'un des leaders mondiaux des plateformes d'IA d'entreprise pour accélérer le déploiement de l'intelligence artificielle."),

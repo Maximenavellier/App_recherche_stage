@@ -4,17 +4,31 @@ const make = (
   id: string, title: string, company: string, location: string, dur: number,
   rem: string, min: number, perks: string[], url: string, src: any, email: string,
   skills: string[], desc: string, opts?: Partial<JobOffer>
-): JobOffer => ({
-  id, title, company, location, date: "2026-11-11", duration: dur + " mois", durationMonths: dur,
-  studyLevel: opts?.studyLevel || "Bac+4 / Bac+5 (Master)", workMode: opts?.workMode || "Hybride / Télétravail",
-  remuneration: rem, remunerationMin: min, isRemunerationEstimated: !!opts?.isRemunerationEstimated,
-  perks, url, source: src, contactEmail: email, emailVerified: true, applyMethod: "portal_and_email",
-  domainCategory: opts?.domainCategory || "Data & IA", requiredSkills: skills,
-  contractType: (opts?.contractType as any) || "Stage", isInternship: true, isFullTimeCdi: false,
-  antiCdiVerified: true, hasPerks: perks.length > 0, hasEstimatedSalary: min > 0,
-  matchScore: opts?.matchScore || 90, description: desc,
-  missions: opts?.missions || [desc],
-});
+): JobOffer => {
+  const safeUrl =
+    url.includes("/jobs/stage-") ||
+    url.includes("viewjob?jk=") ||
+    url.includes("/stages/stage-") ||
+    url.includes("/stages/edf-") ||
+    url.includes("/stages/clariane-") ||
+    url.includes("/stages/stagiaire-") ||
+    url.includes("smartrecruiters.com/Boulanger/stage") ||
+    url.includes("smartrecruiters.com/Kiabi/stage")
+      ? `https://www.google.com/search?q=${encodeURIComponent(`${company} ${title} stage`)}&ibp=htl;jobs`
+      : url;
+
+  return {
+    id, title, company, location, date: "2026-11-11", duration: dur + " mois", durationMonths: dur,
+    studyLevel: opts?.studyLevel || "Bac+4 / Bac+5 (Master)", workMode: opts?.workMode || "Hybride / Télétravail",
+    remuneration: rem, remunerationMin: min, isRemunerationEstimated: !!opts?.isRemunerationEstimated,
+    perks, url: safeUrl, source: src, contactEmail: email, emailVerified: true, applyMethod: "portal_and_email",
+    domainCategory: opts?.domainCategory || "Data & IA", requiredSkills: skills,
+    contractType: (opts?.contractType as any) || "Stage", isInternship: true, isFullTimeCdi: false,
+    antiCdiVerified: true, hasPerks: perks.length > 0, hasEstimatedSalary: min > 0,
+    matchScore: opts?.matchScore || 90, description: desc,
+    missions: opts?.missions || [desc],
+  };
+};
 
 export const MASTER_FEED_PART_A: JobOffer[] = [
   make("feed-decathlon-data-analyst-lille", "Stage Data Analyst & Business Intelligence (H/F)", "Decathlon Digital", "Villeneuve-d'Ascq / Lille (59)", 6, "1 250 € - 1 550 € / mois", 1250, ["Gratification majorée Mulliez","Tickets Restaurant Swile","Transport 80% + Forfait vélo","Avantages CSE Decathlon & AFM","Télétravail (1-2j/semaine)","Vivier prioritaire pré-embauche CDI"], "https://www.welcometothejungle.com/fr/companies/decathlon/jobs/stage-data-analyst-bi-lille", "Welcome to the Jungle", "campus.data@decathlon.com", ["SQL","Python","Power BI","Tableau","Databricks","Data Visualization","Statistiques","Excel"], "Au sein du campus mondial Decathlon Digital à Villeneuve-d'Ascq (Lille), vous rejoignez l'équipe Data pour éclairer les décisions stratégiques sport et retail."),

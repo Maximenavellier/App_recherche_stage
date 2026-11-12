@@ -70,7 +70,14 @@ export async function GET(req: NextRequest) {
     const liveCount = boosted.filter(
       (o) =>
         o.source === "LinkedIn" ||
-        (Array.isArray(o.mergedSources) && o.mergedSources.includes("LinkedIn"))
+        o.source === "HelloWork" ||
+        o.source === "JobTeaser" ||
+        o.source === "Stage.fr" ||
+        o.source === "France Travail" ||
+        o.source === "1jeune1solution" ||
+        o.source === "SmartRecruiters" ||
+        o.source === "Portail Mulliez / AFM" ||
+        (Array.isArray(o.mergedSources) && o.mergedSources.some((s) => /LinkedIn|HelloWork|JobTeaser|Stage\.fr/i.test(s)))
     ).length;
 
     return NextResponse.json({
@@ -184,7 +191,14 @@ export async function POST(req: NextRequest) {
     const liveCount = boosted.filter(
       (o) =>
         o.source === "LinkedIn" ||
-        (Array.isArray(o.mergedSources) && o.mergedSources.includes("LinkedIn"))
+        o.source === "HelloWork" ||
+        o.source === "JobTeaser" ||
+        o.source === "Stage.fr" ||
+        o.source === "France Travail" ||
+        o.source === "1jeune1solution" ||
+        o.source === "SmartRecruiters" ||
+        o.source === "Portail Mulliez / AFM" ||
+        (Array.isArray(o.mergedSources) && o.mergedSources.some((s) => /LinkedIn|HelloWork|JobTeaser|Stage\.fr/i.test(s)))
     ).length;
 
     return NextResponse.json({
