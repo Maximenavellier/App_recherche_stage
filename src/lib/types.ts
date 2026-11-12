@@ -50,6 +50,11 @@ export interface JobOffer {
     hiring?: string;
   };
   mergedSources?: string[];
+  isInternship?: boolean;
+  isFullTimeCdi?: boolean;
+  antiCdiVerified?: boolean;
+  hasPerks?: boolean;
+  hasEstimatedSalary?: boolean;
 }
 
 export interface SearchFilters {
