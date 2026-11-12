@@ -128,3 +128,76 @@ export interface NightlySyncLog {
   }>;
   summary: string;
 }
+
+export const DEFAULT_FILTERS: SearchFilters = {
+  city: "Lille / Hauts-de-France (Priorité) + France",
+  radiusKm: 25,
+  durationFilter: "ALL",
+  studyLevelFilter: "ALL",
+  workModeFilter: "ALL",
+  minRemuneration: 0,
+  requiredPerk: "ALL",
+  maxOffers: 35,
+  onlyVerifiedEmails: false,
+  onlyFavorites: false,
+  contractTypeFilter: "STAGE_ONLY",
+};
+
+export function getSourceBadgeStyle(source: string): { label: string; classes: string } {
+  const s = (source || "").toLowerCase();
+  if (s.includes("welcome") || s.includes("wttj")) {
+    return {
+      label: "🌟 Welcome to the Jungle",
+      classes:
+        "bg-amber-50 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/60",
+    };
+  }
+  if (s.includes("mulliez") || s.includes("afm")) {
+    return {
+      label: "🏢 Portail Galaxie Mulliez / AFM",
+      classes:
+        "bg-rose-50 text-rose-800 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-700/60",
+    };
+  }
+  if (s.includes("banque") || s.includes("assurance")) {
+    return {
+      label: "🏦 Portail Banques & Assurances",
+      classes:
+        "bg-emerald-50 text-emerald-900 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700/60",
+    };
+  }
+  if (s.includes("1jeune") || s.includes("gouv")) {
+    return {
+      label: "🇫🇷 1jeune1solution.gouv",
+      classes:
+        "bg-blue-50 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-700/60",
+    };
+  }
+  if (s.includes("stage.fr")) {
+    return {
+      label: "🎓 Stage.fr",
+      classes:
+        "bg-violet-50 text-violet-800 border-violet-300 dark:bg-violet-950/60 dark:text-violet-300 dark:border-violet-700/60",
+    };
+  }
+  if (s.includes("indeed")) {
+    return {
+      label: "🔎 Indeed",
+      classes:
+        "bg-sky-50 text-sky-800 border-sky-300 dark:bg-sky-950/60 dark:text-sky-300 dark:border-sky-700/60",
+    };
+  }
+  if (s.includes("linkedin")) {
+    return {
+      label: "💼 LinkedIn Jobs",
+      classes:
+        "bg-indigo-50 text-indigo-800 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-700/60",
+    };
+  }
+  return {
+    label: `🌐 ${source}`,
+    classes:
+      "bg-teal-50 text-teal-800 border-teal-300 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-700/60",
+  };
+}
+
